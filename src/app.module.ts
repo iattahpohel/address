@@ -18,8 +18,7 @@ import { ScheduleModule } from '@nestjs/schedule'
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies'
 import { TypeOrmModule } from '@nestjs/typeorm'
 
-// const cwd = process.cwd()
-const synchronizeDatabaseStructure = process.env.APP_ENV == 'dev'
+import { MyConfigService } from './config/config.service'
 
 @Module({
   imports: [
@@ -29,41 +28,41 @@ const synchronizeDatabaseStructure = process.env.APP_ENV == 'dev'
       expandVariables: true,
     }),
     BullModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
+      imports: [ConfigModule, MyConfigModule],
+      useFactory: async (myConfigService: MyConfigService) => ({
         redis: {
-          host: configService.get('REDIS_HOST'),
-          port: configService.get('REDIS_PORT'),
+          host: myConfigService.redisHost,
+          port: myConfigService.redisPort,
         },
       }),
-      inject: [ConfigService],
+      inject: [MyConfigService],
     }),
     TypeOrmModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
+      imports: [ConfigModule, MyConfigModule],
+      useFactory: (myConfigService: MyConfigService) => ({
         type: 'mysql',
-        host: configService.get('MYSQL_HOST'),
-        port: configService.get('MYSQL_PORT'),
-        username: configService.get('MYSQL_USER'),
-        password: configService.get('MYSQL_PASSWORD'),
-        database: configService.get('MYSQL_DATABASE'),
+        host: myConfigService.mysqlHost,
+        port: myConfigService.mysqlPort,
+        username: myConfigService.mysqlUser,
+        password: myConfigService.mysqlPassword,
+        database: myConfigService.mysqlDatabase,
         entities: [__dirname + '/**/entities/*.entity{.ts,.js}'],
         autoLoadEntities: true,
-        synchronize: synchronizeDatabaseStructure,
+        synchronize: myConfigService.synchronizeDatabase,
         namingStrategy: new SnakeNamingStrategy(),
       }),
-      inject: [ConfigService],
+      inject: [MyConfigService],
     }),
     RedisModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
+      imports: [ConfigModule, MyConfigModule],
+      inject: [MyConfigService],
       useFactory: async (
-        configService: ConfigService,
+        myConfigService: MyConfigService,
       ): Promise<RedisModuleOptions> => {
         return {
           config: {
-            host: configService.get('REDIS_HOST'),
-            port: configService.get('REDIS_PORT'),
+            host: myConfigService.redisHost,
+            port: myConfigService.redisPort,
           },
         }
       },

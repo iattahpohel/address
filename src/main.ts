@@ -1,62 +1,79 @@
+import { Logger, ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
 import { MicroserviceOptions, Transport } from '@nestjs/microservices'
 import { join } from 'path'
-import { ValidationPipe } from '@nestjs/common'
 import { AppModule } from '@/app.module'
 import { CustomRpcExceptionFilter } from '@/exception.filter'
+import { EXIT_CODES } from '@/common/constants'
 
-async function bootstrap() {
-  //grpc service
-  const grpcApp = await NestFactory.createMicroservice<MicroserviceOptions>(
-    AppModule,
-    {
-      transport: Transport.GRPC,
-      options: {
-        url: process.env['GRPC_URL'],
-        package: ['fadovn_store'],
-        loader: {
-          longs: String,
-          enums: String,
-          json: true,
-          defaults: true,
+/**
+ * Validates required environment variables
+ */
+function validateEnvironmentVariables(): void {
+  const requiredEnvVars = ['GRPC_URL']
+  const missingVars: string[] = []
+
+  for (const envVar of requiredEnvVars) {
+    if (!process.env[envVar]) {
+      missingVars.push(envVar)
+    }
+  }
+
+  if (missingVars.length > 0) {
+    throw new Error(
+      `Missing required environment variables: ${missingVars.join(', ')}`,
+    )
+  }
+}
+
+async function bootstrap(): Promise<void> {
+  const logger = new Logger('Bootstrap')
+
+  try {
+    // Validate environment variables
+    validateEnvironmentVariables()
+
+    // Initialize gRPC microservice
+    const grpcApp = await NestFactory.createMicroservice<MicroserviceOptions>(
+      AppModule,
+      {
+        transport: Transport.GRPC,
+        options: {
+          url: process.env['GRPC_URL'],
+          package: ['fadovn_store'],
+          loader: {
+            longs: String,
+            enums: String,
+            json: true,
+            defaults: true,
+          },
+          protoPath: [join(__dirname, '../../proto/api.proto')],
         },
-        protoPath: [join(__dirname, '../../proto/api.proto')],
+        logger: ['error', 'warn', 'debug', 'verbose'],
       },
-      logger: ['error', 'warn', 'debug', 'verbose'],
-    },
-  )
-  await grpcApp.useGlobalPipes(
-    new ValidationPipe({ whitelist: true, transform: true }),
-  )
+    )
 
-  grpcApp.useGlobalFilters(new CustomRpcExceptionFilter())
+    // Apply global validation pipe
+    await grpcApp.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        transform: true,
+        forbidNonWhitelisted: true,
+        transformOptions: {
+          enableImplicitConversion: true,
+        },
+      }),
+    )
 
-  await grpcApp.listen()
-  console.log(`GRPC is running on: ${process.env['GRPC_URL']}`)
+    // Apply global exception filter
+    grpcApp.useGlobalFilters(new CustomRpcExceptionFilter())
 
-  //http service
-
-  //   const httpApp = await NestFactory.create(AppModule, {
-  //     logger: ['error', 'warn', 'debug', 'verbose'],
-  //   })
-  //   httpApp.enableCors({
-  //     credentials: true,
-  //   })
-  //   await httpApp.useGlobalPipes(
-  //     new ValidationPipe({ whitelist: true, transform: true }),
-  //   )
-  //   httpApp.useGlobalFilters(new HttpExceptionFilter())
-  //   const config = new DocumentBuilder()
-  //     .setTitle('Vietnam Location')
-  //     .setDescription('Vietnam Location')
-  //     .setVersion('1.0')
-  //     .addTag('fado')
-  //     .build()
-  //   const document = SwaggerModule.createDocument(httpApp, config)
-  //   SwaggerModule.setup('api', httpApp, document)
-  //
-  //   await httpApp.listen(process.env['HTTP_PORT'])
-  //   console.log(`Application is running on: ${await httpApp.getUrl()}`)
+    await grpcApp.listen()
+    logger.log(`gRPC microservice is running on: ${process.env['GRPC_URL']}`)
+  } catch (error) {
+    logger.error('Failed to start application', error)
+    process.exit(EXIT_CODES.GENERAL_ERROR)
+  }
 }
 
 bootstrap()

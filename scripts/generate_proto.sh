@@ -1,5 +1,6 @@
 #!/usr/bin/bash
 rm -rf generated/*
+mkdir -p generated
 pwd=$(pwd)
 
 cd proto/
